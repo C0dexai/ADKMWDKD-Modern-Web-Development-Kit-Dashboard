@@ -36,13 +36,47 @@ COPY . .
 # Your app binds to port 8080
 EXPOSE 8080
 
-# Define environment variables
+# Define environment variables for inference.
+# These can be overridden at runtime.
+ENV API_NAME="gemini-2.5-flash"
 ENV API_KEY=""
 ENV DATABASE_URL=""
 
 # Run the app
 CMD [ "npm", "start" ]
                     `} />
+
+                    <h4 className="font-semibold text-lg text-purple-300 mt-6 mb-2">Runtime Configuration</h4>
+                    <p className="text-gray-400 text-sm mb-4">
+                        Environment variables are used to inject configuration like API keys at runtime.
+                        Here's how you'd set them when running the container. These values would typically come from a secure secret store.
+                    </p>
+                    <div className="space-y-4 mb-4">
+                        <div>
+                            <label htmlFor="api-name" className="block text-sm font-semibold text-gray-300 mb-1">API_NAME</label>
+                            <input 
+                                id="api-name"
+                                type="text" 
+                                placeholder="e.g., 'gemini-2.5-flash'" 
+                                className="w-full bg-gray-900/80 border border-gray-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm" 
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="api-key" className="block text-sm font-semibold text-gray-300 mb-1">API_KEY</label>
+                            <input 
+                                id="api-key"
+                                type="password" 
+                                placeholder="Enter your secret key" 
+                                className="w-full bg-gray-900/80 border border-gray-600 rounded-lg p-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm" 
+                            />
+                        </div>
+                    </div>
+                    <CodeBlock language="bash" code={`
+docker run -d -p 8080:8080 \\
+  -e API_NAME="gemini-2.5-flash" \\
+  -e API_KEY="your_secret_key_here" \\
+  your-username/my-adk-app:latest
+    `} />
                 </div>
                 <div className="p-6 semi-transparent-card">
                      <h3 className="text-xl font-bold mb-4">CI/CD with GitHub Actions</h3>
