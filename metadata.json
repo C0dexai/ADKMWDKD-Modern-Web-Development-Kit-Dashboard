@@ -1,0 +1,6 @@
+{
+  "name": "ADKMWDKD-Modern Web Development Kit Dashboard",
+  "description": "An interactive dashboard for the modern web developer, covering architecture, tooling, and best practices for Vite, Vue, Node, and more. Featuring a live component sandbox powered by the Gemini API.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
