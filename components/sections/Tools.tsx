@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import CodeBlock from '../CodeBlock.tsx';
 
@@ -162,6 +163,176 @@ const InteractiveToolCard = ({ tool, isOpen, onClick }: { tool: ToolInfo, isOpen
     );
 };
 
+// --- New Data for Custom Tools ---
+interface CustomToolInfo {
+    title: string;
+    description: string;
+    inputSchema: string;
+    outputSchema: string;
+    usageExample: string;
+}
+
+const customToolsData: CustomToolInfo[] = [
+    {
+        title: 'Data Validator',
+        description: 'A custom tool that validates a JSON object against a provided JSON schema. Essential for ensuring data integrity before processing.',
+        inputSchema: `
+{
+  "type": "object",
+  "properties": {
+    "dataToValidate": { 
+      "type": "object",
+      "description": "The JSON object to be validated."
+    },
+    "validationSchema": { 
+      "type": "object",
+      "description": "The JSON schema to validate against."
+    }
+  },
+  "required": ["dataToValidate", "validationSchema"]
+}
+        `,
+        outputSchema: `
+{
+  "type": "object",
+  "properties": {
+    "isValid": { 
+      "type": "boolean",
+      "description": "True if the data is valid, otherwise false."
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "A list of validation errors, if any."
+    }
+  },
+  "required": ["isValid"]
+}
+        `,
+        usageExample: `
+// API call to an agent with the DataValidator tool
+fetch('/api/v1/tasks', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Authorization': '...' },
+  body: JSON.stringify({
+    agent_id: "data-quality-agent-01",
+    tool_choice: "DataValidator",
+    input: {
+      "dataToValidate": { "name": "Jane Doe", "age": "thirty" },
+      "validationSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "age": { "type": "number" }
+        },
+        "required": ["name", "age"]
+      }
+    }
+  })
+});
+
+/* 
+Expected structured output from the tool:
+{
+  "isValid": false,
+  "errors": [
+    "instance.age is not of a type(s) number"
+  ]
+}
+*/
+        `
+    },
+    {
+        title: 'CRM Contact Lookup',
+        description: 'A custom tool that fetches contact details from a mock CRM system based on the user\'s email address. Returns contact info or a "not found" message.',
+        inputSchema: `
+{
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "The email address of the contact to look up."
+    }
+  },
+  "required": ["email"]
+}
+        `,
+        outputSchema: `
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["success", "not_found"],
+      "description": "The result of the lookup operation."
+    },
+    "contact": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "lastContactDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"],
+      "description": "The contact details, present only on success."
+    }
+  },
+  "required": ["status"]
+}
+        `,
+        usageExample: `
+// API call to an agent with the CrmContactLookup tool
+fetch('/api/v1/tasks', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Authorization': '...' },
+  body: JSON.stringify({
+    agent_id: "sales-assistant-agent-01",
+    tool_choice: "CrmContactLookup",
+    input: {
+      "email": "jane.doe@example.com"
+    }
+  })
+});
+
+/*
+Expected structured output on success:
+{
+  "status": "success",
+  "contact": {
+    "id": "crm-12345",
+    "name": "Jane Doe",
+    "lastContactDate": "2024-05-10T14:48:00.000Z"
+  }
+}
+*/
+        `
+    }
+];
+
+// --- New Component for Displaying Custom Tools ---
+const CustomToolCard = ({ tool }: { tool: CustomToolInfo }) => (
+    <div className="semi-transparent-card p-6 mt-6" style={{'--glow-color': 'var(--neon-blue)'} as React.CSSProperties}>
+        <h4 className="text-xl font-bold mb-2 neon-text" style={{'--glow-color': 'var(--neon-blue)'} as React.CSSProperties}>{tool.title}</h4>
+        <p className="text-gray-300 text-sm mb-4">{tool.description}</p>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+                <h5 className="font-semibold text-blue-200 mb-2">Input Schema</h5>
+                <CodeBlock code={tool.inputSchema} language="json" />
+            </div>
+            <div>
+                <h5 className="font-semibold text-blue-200 mb-2">Output Schema</h5>
+                <CodeBlock code={tool.outputSchema} language="json" />
+            </div>
+        </div>
+        <div className="mt-4">
+            <h5 className="font-semibold text-blue-200 mb-2">API Usage Example</h5>
+            <CodeBlock code={tool.usageExample} language="javascript" />
+        </div>
+    </div>
+);
+
 const Tools: React.FC = () => {
     const [expandedTool, setExpandedTool] = useState<string | null>(null);
 
@@ -242,8 +413,18 @@ class CrmTool implements Tool<CrmInput> {
                 </div>
             </div>
 
+            <div>
+                <h3 className="text-2xl font-bold mb-6 neon-text" style={{'--glow-color': 'var(--neon-blue)'} as React.CSSProperties}>My Custom Tools</h3>
+                <p className="text-gray-400 mb-2 -mt-4">
+                    Here are the custom tools you've defined. The ADK uses the provided schemas to validate inputs and outputs, enabling reliable, structured data exchange.
+                </p>
+                {customToolsData.map(tool => (
+                    <CustomToolCard key={tool.title} tool={tool} />
+                ))}
+            </div>
+
             <div className="p-6 md:p-8 semi-transparent-card" style={{'--glow-color': 'var(--neon-green)'} as React.CSSProperties}>
-                <h3 className="text-2xl font-bold mb-4">Creating Custom Tools</h3>
+                <h3 className="text-2xl font-bold mb-4">Implementing Custom Tools</h3>
                 <p className="text-gray-300 mb-4">
                     The true power of the ADK comes from creating custom tools tailored to your business needs. For robust, type-safe tools, we recommend using a validation library like \`zod\`. The runtime will automatically validate incoming requests against your schema before calling the \`execute\` method.
                 </p>

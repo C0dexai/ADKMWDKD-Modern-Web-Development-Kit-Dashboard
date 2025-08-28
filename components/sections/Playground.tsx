@@ -1,54 +1,32 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { SimLog } from '../../types.ts';
-import { generateResponseStream } from '../../services/geminiService.ts';
+import { generateAgentResponse, executeCode, generateFinalAnswerStream } from '../../services/geminiService.ts';
+import CodeBlock from '../CodeBlock.tsx';
 
-// Data structure for suggestions and their follow-ups
 interface Suggestion {
     key: string;
     prompt: string;
-    followUps?: Suggestion[];
 }
 
 const suggestionTree: Suggestion[] = [
     {
+        key: 'calculate',
+        prompt: "What is the square root of 15?",
+    },
+    {
+        key: 'python_sort',
+        prompt: "Use python to sort this list: [8, 4, 1, 9, 5]",
+    },
+    {
         key: 'architecture',
-        prompt: "Explain the ADK architecture",
-        followUps: [
-            { key: 'orchestration-deep', prompt: "Tell me more about the Orchestration Engine" },
-            { key: 'comm-bus', prompt: "How does the Communication Bus work?" },
-            { key: 'state-management', prompt: "What's the role of the State Manager?" },
-        ]
+        prompt: "Explain the ADK architecture in simple terms.",
     },
     {
-        key: 'custom-tool',
-        prompt: "How do I create a custom tool?",
-        followUps: [
-            { key: 'tool-schema', prompt: "Why is an input schema important for a tool?" },
-            { key: 'tool-best-practice', prompt: "What are some best practices for custom tools?" },
-        ]
-    },
-    {
-        key: 'orchestration',
-        prompt: "What is orchestration?",
-        followUps: [
-            { key: 'multi-agent', prompt: "Give an example of a multi-agent workflow" },
-            { key: 'a2a-comm', prompt: "How do agents communicate during orchestration?" },
-        ]
+        key: 'custom_tool',
+        prompt: "How do I create a custom tool with a schema?",
     }
 ];
-
-// Helper to find a suggestion anywhere in the tree by its key
-const findSuggestionByKey = (key: string, tree: Suggestion[]): Suggestion | undefined => {
-    for (const suggestion of tree) {
-        if (suggestion.key === key) return suggestion;
-        if (suggestion.followUps) {
-            const found = findSuggestionByKey(key, suggestion.followUps);
-            if (found) return found;
-        }
-    }
-    return undefined;
-};
 
 interface PlaygroundProps {
     systemInstruction: string;
@@ -69,62 +47,70 @@ const Playground: React.FC<PlaygroundProps> = ({ systemInstruction }) => {
 
     const handleSend = async (suggestionKey?: string) => {
         let messageText = '';
-        let selectedSuggestion: Suggestion | undefined;
-
         if (suggestionKey) {
-            // Find suggestion in the entire tree to handle nested keys
-            selectedSuggestion = findSuggestionByKey(suggestionKey, suggestionTree);
-            messageText = selectedSuggestion?.prompt || '';
+            messageText = suggestionTree.find(s => s.key === suggestionKey)?.prompt || '';
         } else {
             messageText = input;
         }
 
         if (!messageText.trim() || isLoading) return;
-        
-        // Update suggestions for the next turn
-        if (selectedSuggestion?.followUps) {
-            setCurrentSuggestions(selectedSuggestion.followUps);
-        } else {
-            // Reset to top-level if user typed, or clicked a leaf node
-            setCurrentSuggestions(suggestionTree);
-        }
 
         const newUserLog: SimLog = { id: Date.now(), type: 'user', text: messageText };
         setLogs(prev => [...prev, newUserLog]);
-        
-        if (!suggestionKey) {
-            setInput('');
-        }
-        
+        setCurrentSuggestions(suggestionTree);
+        setInput('');
         setIsLoading(true);
 
-        const agentLogId = Date.now() + 1;
-        setLogs(prev => [...prev, { id: agentLogId, type: 'agent', text: '' }]);
-
         try {
-            const responseStream = await generateResponseStream(messageText, systemInstruction);
-            let fullText = '';
-            for await (const chunk of responseStream) {
-                 const chunkText = chunk.text;
-                if (chunkText) {
-                    fullText += chunkText;
-                     setLogs(prev => prev.map(log => 
-                        log.id === agentLogId ? { ...log, text: fullText + '...' } : log
-                    ));
-                }
-            }
-             setLogs(prev => prev.map(log => 
-                log.id === agentLogId ? { ...log, text: fullText } : log
-            ));
+            const initialResponse = await generateAgentResponse(messageText, systemInstruction);
+            const functionCall = initialResponse.candidates?.[0]?.content?.parts?.find(part => part.functionCall)?.functionCall;
 
+            if (functionCall && functionCall.name === 'code_interpreter' && functionCall.args?.code) {
+                const code = functionCall.args.code as string;
+
+                const thoughtLog: SimLog = { id: Date.now() + 1, type: 'thought', text: "The user's request requires running code. I will use the Code Interpreter tool." };
+                const toolCallLog: SimLog = { id: Date.now() + 2, type: 'tool', text: code };
+                setLogs(prev => [...prev, thoughtLog, toolCallLog]);
+
+                const toolResultText = await executeCode(code);
+
+                const toolResultLog: SimLog = { id: Date.now() + 3, type: 'tool_result', text: toolResultText };
+                setLogs(prev => [...prev, toolResultLog]);
+
+                const historyParts = [
+                    ...(initialResponse.candidates?.[0].content.parts || []),
+                    { functionResponse: { name: 'code_interpreter', response: { content: toolResultText } } }
+                ];
+
+                const responseStream = await generateFinalAnswerStream(messageText, historyParts, systemInstruction);
+                
+                const agentLogId = Date.now() + 4;
+                setLogs(prev => [...prev, { id: agentLogId, type: 'agent', text: '' }]);
+                
+                let fullText = '';
+                for await (const chunk of responseStream) {
+                    const chunkText = chunk.text;
+                    if (chunkText) {
+                        fullText += chunkText;
+                        setLogs(prev => prev.map(log => 
+                            log.id === agentLogId ? { ...log, text: fullText + '...' } : log
+                        ));
+                    }
+                }
+                setLogs(prev => prev.map(log => 
+                    log.id === agentLogId ? { ...log, text: fullText } : log
+                ));
+
+            } else {
+                const agentText = initialResponse.text;
+                const agentLog: SimLog = { id: Date.now() + 1, type: 'agent', text: agentText };
+                setLogs(prev => [...prev, agentLog]);
+            }
         } catch (error) {
             console.error(error);
-            let errorMessage = 'An unexpected error occurred.';
-            if (error instanceof Error) {
-                errorMessage = error.message;
-            }
-             const errorLog: SimLog = { id: agentLogId, type: 'error', text: errorMessage };
-             setLogs(prev => prev.map(log => log.id === agentLogId ? errorLog : log));
+            const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+            const errorLog: SimLog = { id: Date.now() + 1, type: 'error', text: errorMessage };
+            setLogs(prev => [...prev, errorLog]);
         } finally {
             setIsLoading(false);
         }
@@ -146,7 +132,34 @@ const Playground: React.FC<PlaygroundProps> = ({ systemInstruction }) => {
                      <div className={`${baseClasses} justify-start`}>
                         <div className={`${bubbleClasses} bg-gray-700/50 text-gray-200 whitespace-pre-wrap`}>
                             {log.text}
-                            {log.text.endsWith('...') && <span className="blinking-cursor ml-1"></span>}
+                            {isLoading && log.text.endsWith('...') && <span className="blinking-cursor ml-1"></span>}
+                        </div>
+                    </div>
+                );
+            case 'thought':
+                return (
+                    <div className={`${baseClasses} justify-start`}>
+                        <div className="p-4 rounded-lg max-w-xl bg-gray-800/60 border border-gray-600/80 w-full">
+                           <p className="font-semibold text-gray-300 mb-2">Thinking...</p>
+                           <p className="text-gray-400 italic">{log.text}</p>
+                        </div>
+                    </div>
+                );
+            case 'tool':
+                return (
+                    <div className={`${baseClasses} justify-start`}>
+                        <div className="p-4 rounded-lg max-w-xl bg-blue-950/50 border border-blue-500/30 w-full">
+                            <p className="font-semibold text-blue-300 mb-2">Calling Tool: <code className="font-mono">code_interpreter</code></p>
+                            <CodeBlock code={log.text} language="python" />
+                        </div>
+                    </div>
+                );
+            case 'tool_result':
+                return (
+                    <div className={`${baseClasses} justify-start`}>
+                        <div className="p-4 rounded-lg max-w-xl bg-green-950/50 border border-green-500/30 w-full">
+                            <p className="font-semibold text-green-300 mb-2">Tool Result:</p>
+                            <pre className="whitespace-pre-wrap font-mono text-gray-200 bg-gray-900/50 p-2 rounded">{log.text}</pre>
                         </div>
                     </div>
                 );
@@ -167,7 +180,7 @@ const Playground: React.FC<PlaygroundProps> = ({ systemInstruction }) => {
                 <h2 className="text-3xl font-bold mb-2 neon-text" style={{ '--glow-color': 'var(--neon-pink)' } as React.CSSProperties}>
                     Live Playground
                 </h2>
-                <p className="text-gray-400 mb-4">Interact directly with a Gemini-powered agent. The agent is configured with the ADK system prompt to plan and execute tasks.</p>
+                <p className="text-gray-400 mb-4">Interact directly with a Gemini-powered agent. The agent can now use a Code Interpreter tool to perform calculations and run code.</p>
                 
                 <div className="flex-1 overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
                     {logs.length === 0 && (
@@ -180,8 +193,8 @@ const Playground: React.FC<PlaygroundProps> = ({ systemInstruction }) => {
                 </div>
                 
                 <div className="mt-4 pt-4 border-t border-pink-500/10">
-                     <h4 className="text-sm font-semibold text-pink-200 mb-2">
-                        {currentSuggestions === suggestionTree ? "Try these suggestions:" : "Here are some follow-ups:"}
+                    <h4 className="text-sm font-semibold text-pink-200 mb-2">
+                        Try these suggestions:
                     </h4>
                     <div className="flex flex-wrap gap-2">
                         {currentSuggestions.map((suggestion) => (
@@ -213,7 +226,7 @@ const Playground: React.FC<PlaygroundProps> = ({ systemInstruction }) => {
                         className="bg-pink-600 text-white font-bold p-3 rounded-lg hover:bg-pink-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
                         aria-label="Send message"
                     >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                     </button>
                 </div>
                  <p className="text-xs text-gray-600 mt-2">This is a live demonstration. Ensure your Gemini API key is configured correctly in the environment.</p>

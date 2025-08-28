@@ -144,6 +144,70 @@ trigger:
                     icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                 />
             </div>
+
+            <div>
+                <h3 className="text-2xl font-bold mt-12 mb-6 neon-text" style={{'--glow-color': 'var(--neon-pink)'} as React.CSSProperties}>Trigger Configurations in Detail</h3>
+                <div className="space-y-8">
+                    {/* Schedule Trigger */}
+                    <div className="semi-transparent-card p-6" style={{ '--glow-color': 'var(--neon-pink)' } as React.CSSProperties}>
+                        <h4 className="font-bold text-lg mb-2 text-pink-300">Schedule Trigger</h4>
+                        <p className="text-gray-400 mb-4">
+                            Use a schedule trigger to run an agent at a specific time or on a recurring basis. This is perfect for generating reports, performing routine maintenance, or any task that needs to happen automatically on a schedule. It uses standard cron syntax.
+                        </p>
+                        <CodeBlock code={`
+trigger:
+  type: schedule
+  config:
+    # Runs at 9 AM (UTC) every Monday
+    cron: "0 9 * * 1"
+    task_input: "Generate the weekly financial summary and email it to management."
+`} language="yaml" />
+                    </div>
+
+                    {/* Webhook Trigger */}
+                    <div className="semi-transparent-card p-6" style={{ '--glow-color': 'var(--neon-pink)' } as React.CSSProperties}>
+                        <h4 className="font-bold text-lg mb-2 text-pink-300">Webhook Trigger</h4>
+                        <p className="text-gray-400 mb-4">
+                            A webhook trigger allows an external service to activate your agent by sending an HTTP POST request to a unique URL. This is ideal for integrations with third-party systems like GitHub, Stripe, or Slack. The incoming request body is passed as input to the agent.
+                        </p>
+                        <CodeBlock code={`
+trigger:
+  type: webhook
+  source: github # A descriptive name for the source
+  # The ADK will provide a unique URL for this trigger,
+  # e.g., https://api.adk.example.com/webhooks/github/code-reviewer-01
+
+# When a GitHub pull request is opened, it sends a payload.
+# The agent can be instructed to process this payload.
+# Example task input: "Review the code changes in the provided pull request payload."
+`} language="yaml" />
+                    </div>
+
+                    {/* API Trigger */}
+                    <div className="semi-transparent-card p-6" style={{ '--glow-color': 'var(--neon-pink)' } as React.CSSProperties}>
+                        <h4 className="font-bold text-lg mb-2 text-pink-300">API Trigger</h4>
+                        <p className="text-gray-400 mb-4">
+                            Expose your agent via a dedicated REST API endpoint. This allows your own applications or authorized third parties to programmatically invoke the agent and receive a structured response. It's the most flexible way to integrate agent capabilities into other software.
+                        </p>
+                        <CodeBlock code={`
+trigger:
+  type: api
+  # The ADK will create an endpoint for this agent,
+  # e.g., POST /api/v1/agents/support-triage-01/invoke
+  config:
+    # Define an input schema for request body validation (optional but recommended)
+    input_schema:
+      type: object
+      properties:
+        customer_email:
+          type: string
+        message:
+          type: string
+      required: ["customer_email", "message"]
+`} language="yaml" />
+                    </div>
+                </div>
+            </div>
         </section>
     );
 };
