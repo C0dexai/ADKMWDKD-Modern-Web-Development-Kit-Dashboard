@@ -5,10 +5,10 @@ let ai: GoogleGenAI | null = null;
 
 const getAI = () => {
     if (!ai) {
-        if (!process.env.API_KEY) {
-            throw new Error("API_KEY is not set in the environment. Please configure it to use the Playground.");
+        if (!import.meta.env.VITE_GEMINI_API_KEY) {
+            throw new Error("VITE_GEMINI_API_KEY is not set in the environment. Please configure it to use the Playground.");
         }
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
     }
     return ai;
 }
